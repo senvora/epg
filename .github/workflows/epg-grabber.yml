@@ -5,103 +5,89 @@ on:
     - cron: '0 22 * * *' # 22:00 UTC / 03:30 IST
   workflow_dispatch:
 
-env:
-  TZ: Asia/Kolkata
-
 jobs:
-  grab-and-download:
-    name: Grab & Process EPG in Parallel with Logging
+  grabber:
+    name: EPG Grabber
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      # Checkout repo
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      # Step 1: Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      # Setup Node.js
+      # Step 2: Set up Git identity
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions Bot"
+
+      # Step 3: Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
 
-      # Cache Node.js dependencies
-      - name: Cache Node.js dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: node-modules-${{ hashFiles('package-lock.json') }}
-          restore-keys: node-modules-
-
-      # Install Node.js dependencies
       - name: Install Node.js dependencies
         run: npm install --no-audit --no-fund --legacy-peer-deps
 
-      # Grab all EPGs in parallel with logging
-      - name: Grab EPGs in Parallel with Logging
+      # Step 4: Run Node.js EPG grabbers
+      - name: Grab DishTV EPG
         run: |
-          mkdir -p epg/dishtv epg/tataplay epg/distrotv logs
+          TZ=Asia/Kolkata npm run grab -- --channels=sites/dishtv.in/dishtv.xml --maxConnections=10 --days=2 --gzip
+          cp guide.xml dishtv.xml
+          cp guide.xml.gz dishtv.xml.gz
+          python3 scripts/dishtv_epg.py
 
-          grab_dishtv() {
-            echo "[INFO] Starting DishTV grab..."
-            npm run grab -- --channels=sites/dishtv.in/dishtv.xml --maxConnections=10 --days=2 \
-              > logs/dishtv.log 2>&1
-            mv guide.xml epg/dishtv.xml
-            python3 scripts/dishtv_epg.py >> logs/dishtv.log 2>&1
-            echo "[INFO] DishTV grab completed."
-          }
+      - name: Grab TataPlay EPG
+        run: |
+          TZ=Asia/Kolkata npm run grab -- --channels=sites/tataplay.com/tataplay.xml --maxConnections=10 --days=2 --gzip
+          cp guide.xml tataplay.xml
+          cp guide.xml.gz tataplay.xml.gz
+          python3 scripts/tataplay_epg.py
 
-          grab_tataplay() {
-            echo "[INFO] Starting TataPlay grab..."
-            npm run grab -- --channels=sites/tataplay.com/tataplay.xml --maxConnections=10 --days=2 \
-              > logs/tataplay.log 2>&1
-            mv guide.xml epg/tataplay.xml
-            python3 scripts/tataplay_epg.py >> logs/tataplay.log 2>&1
-            echo "[INFO] TataPlay grab completed."
-          }
+      - name: Grab DistroTV EPG
+        run: |
+          TZ=Asia/Kolkata npm run grab -- --channels=sites/ditro.tv/tataplay.xml --maxConnections=10 --days=2 --gzip
+          cp guide.xml tataplay.xml
+          cp guide.xml.gz distrotv.xml.gz
+          python3 scripts/distrotv_epg.py
 
-          grab_distrotv() {
-            echo "[INFO] Starting DistroTV grab..."
-            npm run grab -- --channels=sites/distro.tv/distrotv.xml --maxConnections=10 --days=2 \
-              > logs/distrotv.log 2>&1
-            mv guide.xml epg/distrotv.xml
-            python3 scripts/distrotv_epg.py >> logs/distrotv.log 2>&1
-            echo "[INFO] DistroTV grab completed."
-          }
+      # Save EPG files for the next job
+      - name: Upload EPG files
+        uses: actions/upload-artifact@v4
+        with:
+          name: epg-files
+          path: "*.xml*"
 
-          # Run all grabs in parallel
-          grab_dishtv &
-          grab_tataplay &
-          grab_distrotv &
+  downloader:
+    name: EPG Downloader
+    runs-on: ubuntu-latest
+    needs: grabber
+    steps:
+      # Step 1: Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-          # Wait for all background jobs
-          wait
+      # Step 2: Set up Git identity
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions Bot"
 
-          # Show summary logs
-          echo "================ Summary Logs ================"
-          cat logs/dishtv.log
-          echo "---------------------------------------------"
-          cat logs/tataplay.log
-          echo "---------------------------------------------"
-          cat logs/distrotv.log
-          echo "============================================="
+      # Step 3: Download artifacts from grabber
+      - name: Download EPG artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: epg-files
+          path: .
 
-      # Setup Python for downloader
+      # Step 4: Setup Python
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
 
-      # Cache Python dependencies
-      - name: Cache Python dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: python-deps-${{ hashFiles('requirements.txt') || 'default' }}
-          restore-keys: python-deps-
-
-      # Install Python dependencies
       - name: Install Python dependencies
         run: |
           if [ -f requirements.txt ]; then
@@ -110,16 +96,24 @@ jobs:
             pip install requests
           fi
 
-      # Run EPG Downloader Script
-      - name: Run EPG Downloader Script
-        run: python scripts/epg-downloader.py
-
-      # Commit & push only latest .xml.gz files
-      - name: Commit & Push Updates
+      # Step 5: Run EPG Downloader Script
+      - name: Run XML Organizer Script
         run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "GitHub Actions Bot"
-          git pull --rebase origin main || true
+          export TZ=Asia/Kolkata
+          date  # confirm current timezone in logs
+          python scripts/epg-downloader.py
+
+      # Step 6: Get current IST date
+      - name: Get current date in IST
+        id: get_date
+        env:
+          TZ: Asia/Kolkata
+        run: echo "current_date=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+
+      # Step 7: Commit & push updated EPG files
+      - name: Commit & push updated EPG files
+        run: |
           git add epg/*.xml.gz || true
-          git diff --cached --quiet || git commit -m "EPG updated at $(date +'%Y-%m-%d %H:%M:%S') (IST)"
-          git push || echo "No changes to push"
+          git commit -m "EPG updated at ${{ env.current_date }} (IST)" || echo "No changes to commit"
+          git pull --rebase origin main || true
+          git push
