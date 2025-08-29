@@ -8,25 +8,25 @@ on:
 env:
   TZ: Asia/Kolkata
 
-# -------------------------------
-# Grabber Jobs
-# -------------------------------
 jobs:
-  grabber-dishtv:
-    name: Grab DishTV EPG
+  grab-and-download:
+    name: Grab & Process EPG in Parallel with Logging
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      # Checkout repo
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
+      # Cache Node.js dependencies
       - name: Cache Node.js dependencies
         uses: actions/cache@v4
         with:
@@ -34,114 +34,66 @@ jobs:
           key: node-modules-${{ hashFiles('package-lock.json') }}
           restore-keys: node-modules-
 
+      # Install Node.js dependencies
       - name: Install Node.js dependencies
         run: npm install --no-audit --no-fund --legacy-peer-deps
 
-      - name: Grab DishTV EPG
+      # Grab all EPGs in parallel with logging
+      - name: Grab EPGs in Parallel with Logging
         run: |
-          npm run grab -- --channels=sites/dishtv.in/dishtv.xml --maxConnections=10 --days=2 --gzip
-          python3 scripts/dishtv_epg.py
-          mkdir -p epg/dishtv
-          cp guide.xml ../epg/dishtv.xml
-          cp guide.xml.gz ../epg/dishtv.xml.gz
+          mkdir -p epg/dishtv epg/tataplay epg/distrotv logs
 
-      - name: Upload DishTV EPG
-        uses: actions/upload-artifact@v4
+          grab_dishtv() {
+            echo "[INFO] Starting DishTV grab..."
+            npm run grab -- --channels=sites/dishtv.in/dishtv.xml --maxConnections=10 --days=2 \
+              > logs/dishtv.log 2>&1
+            mv guide.xml epg/dishtv.xml
+            python3 scripts/dishtv_epg.py >> logs/dishtv.log 2>&1
+            echo "[INFO] DishTV grab completed."
+          }
+
+          grab_tataplay() {
+            echo "[INFO] Starting TataPlay grab..."
+            npm run grab -- --channels=sites/tataplay.com/tataplay.xml --maxConnections=10 --days=2 \
+              > logs/tataplay.log 2>&1
+            mv guide.xml epg/tataplay.xml
+            python3 scripts/tataplay_epg.py >> logs/tataplay.log 2>&1
+            echo "[INFO] TataPlay grab completed."
+          }
+
+          grab_distrotv() {
+            echo "[INFO] Starting DistroTV grab..."
+            npm run grab -- --channels=sites/distro.tv/distrotv.xml --maxConnections=10 --days=2 \
+              > logs/distrotv.log 2>&1
+            mv guide.xml epg/distrotv.xml
+            python3 scripts/distrotv_epg.py >> logs/distrotv.log 2>&1
+            echo "[INFO] DistroTV grab completed."
+          }
+
+          # Run all grabs in parallel
+          grab_dishtv &
+          grab_tataplay &
+          grab_distrotv &
+
+          # Wait for all background jobs
+          wait
+
+          # Show summary logs
+          echo "================ Summary Logs ================"
+          cat logs/dishtv.log
+          echo "---------------------------------------------"
+          cat logs/tataplay.log
+          echo "---------------------------------------------"
+          cat logs/distrotv.log
+          echo "============================================="
+
+      # Setup Python for downloader
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          name: epg-dishtv
-          path: epg/dishtv/
+          python-version: "3.x"
 
-  grabber-tataplay:
-    name: Grab TataPlay EPG
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Cache Node.js dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: node-modules-${{ hashFiles('package-lock.json') }}
-          restore-keys: node-modules-
-
-      - name: Install Node.js dependencies
-        run: npm install --no-audit --no-fund --legacy-peer-deps
-
-      - name: Grab TataPlay EPG
-        run: |
-          npm run grab -- --channels=sites/tataplay.com/tataplay.xml --maxConnections=10 --days=2 --gzip
-          python3 scripts/tataplay_epg.py
-          mkdir -p epg/tataplay
-          cp guide.xml ../epg/tataplay.xml
-          cp guide.xml.gz ../epg/tataplay.xml.gz
-
-      - name: Upload TataPlay EPG
-        uses: actions/upload-artifact@v4
-        with:
-          name: epg-tataplay
-          path: epg/tataplay/
-
-  grabber-distrotv:
-    name: Grab DistroTV EPG
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Cache Node.js dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: node-modules-${{ hashFiles('package-lock.json') }}
-          restore-keys: node-modules-
-
-      - name: Install Node.js dependencies
-        run: npm install --no-audit --no-fund --legacy-peer-deps
-
-      - name: Grab DistroTV EPG
-        run: |
-          npm run grab -- --channels=sites/distro.tv/distrotv.xml --maxConnections=10 --days=2 --gzip
-          python3 scripts/distrotv_epg.py
-          mkdir -p epg/distrotv
-          cp guide.xml ../epg/distrotv.xml
-          cp guide.xml.gz ../distrotv.xml.gz
-
-      - name: Upload DistroTV EPG
-        uses: actions/upload-artifact@v4
-        with:
-          name: epg-distrotv
-          path: epg/distrotv/
-
-# -------------------------------
-# Downloader Job
-# -------------------------------
-  downloader:
-    name: EPG Downloader
-    runs-on: ubuntu-latest
-    needs:
-      - grabber-dishtv
-      - grabber-tataplay
-      - grabber-distrotv
-    steps:
-      - uses: actions/checkout@v4
-
+      # Cache Python dependencies
       - name: Cache Python dependencies
         uses: actions/cache@v4
         with:
@@ -149,6 +101,7 @@ jobs:
           key: python-deps-${{ hashFiles('requirements.txt') || 'default' }}
           restore-keys: python-deps-
 
+      # Install Python dependencies
       - name: Install Python dependencies
         run: |
           if [ -f requirements.txt ]; then
@@ -157,38 +110,16 @@ jobs:
             pip install requests
           fi
 
-      - name: Download DishTV
-        uses: actions/download-artifact@v4
-        with:
-          name: epg-dishtv
-          path: epg/dishtv/
-
-      - name: Download TataPlay
-        uses: actions/download-artifact@v4
-        with:
-          name: epg-tataplay
-          path: epg/tataplay/
-
-      - name: Download DistroTV
-        uses: actions/download-artifact@v4
-        with:
-          name: epg-distrotv
-          path: epg/distrotv/
-
-      - name: Cleanup old .xml.gz files
-        run: |
-          find epg/ -type f -name "*.xml.gz" -mtime +7 -exec rm -f {} \;
-
+      # Run EPG Downloader Script
       - name: Run EPG Downloader Script
         run: python scripts/epg-downloader.py
 
-      - name: Get current date in IST
-        id: get_date
-        run: echo "current_date=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
-
-      - name: Commit & push updated EPG files
+      # Commit & push only latest .xml.gz files
+      - name: Commit & Push Updates
         run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions Bot"
           git pull --rebase origin main || true
           git add epg/*.xml.gz || true
-          git diff --cached --quiet || git commit -m "EPG updated and cleaned at ${{ env.current_date }} (IST)"
+          git diff --cached --quiet || git commit -m "EPG updated at $(date +'%Y-%m-%d %H:%M:%S') (IST)"
           git push || echo "No changes to push"
