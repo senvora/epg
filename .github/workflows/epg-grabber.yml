@@ -33,36 +33,31 @@ jobs:
           cache: 'npm'
           cache-dependency-path: package-lock.json   # root of repo
 
-      # Step 4: Install Node.js dependencies in epg-org
+      # Step 4: Install Node.js dependencies
       - name: Install Node.js dependencies
-        run: |
-          cd epg-org
-          npm install --no-audit --no-fund --legacy-peer-deps
+        run: npm install --no-audit --no-fund --legacy-peer-deps
 
       # Step 5: Run grabbers
       - name: Grab DishTV EPG
         run: |
-          cd epg-org
-          TZ=Asia/Kolkata npm run grab -- --channels=../sites/dishtv.in/dishtv.xml --maxConnections=10 --days=3 --gzip
-          mkdir -p ../epg
-          cp guide.xml ../epg/dishtv.xml
-          cp guide.xml.gz ../epg/dishtv.xml.gz
+          TZ=Asia/Kolkata npm run grab -- --channels=sites/dishtv.in/dishtv.xml --maxConnections=10 --days=3 --gzip
+          mkdir -p epg
+          cp guide.xml epg/dishtv.xml
+          cp guide.xml.gz epg/dishtv.xml.gz
 
       - name: Grab TataPlay EPG
         run: |
-          cd epg-org
-          TZ=Asia/Kolkata npm run grab -- --channels=../sites/tataplay.com/tataplay.xml --maxConnections=10 --days=3 --gzip
-          mkdir -p ../epg
-          cp guide.xml ../epg/tataplay.xml
-          cp guide.xml.gz ../epg/tataplay.xml.gz
-      
+          TZ=Asia/Kolkata npm run grab -- --channels=sites/tataplay.com/tataplay.xml --maxConnections=10 --days=3 --gzip
+          mkdir -p epg
+          cp guide.xml epg/tataplay.xml
+          cp guide.xml.gz epg/tataplay.xml.gz
+
       - name: Grab DistroTV EPG
         run: |
-          cd epg-org
-          TZ=Asia/Kolkata npm run grab -- --channels=../sites/distro.tv/distrotv.xml --maxConnections=10 --days=3 --gzip
-          mkdir -p ../epg
-          cp guide.xml ../epg/distrotv.xml
-          cp guide.xml.gz ../epg/distrotv.xml.gz
+          TZ=Asia/Kolkata npm run grab -- --channels=sites/distro.tv/distrotv.xml --maxConnections=10 --days=3 --gzip
+          mkdir -p epg
+          cp guide.xml epg/distrotv.xml
+          cp guide.xml.gz epg/distrotv.xml.gz
 
       # Step 6: Save epg/ folder
       - name: Upload EPG folder
