@@ -5,84 +5,240 @@ on:
     - cron: '0 22 * * *' # 22:00 UTC / 03:30 IST
   workflow_dispatch:
 
+env:
+  TZ: Asia/Kolkata
+
+# -------------------------------
+# Individual Grabber Jobs
+# -------------------------------
 jobs:
-  grabber:
-    name: EPG Grabber
+  grabber-dishtv:
+    name: Grab DishTV EPG
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # allow push
-
+      contents: write
     steps:
-      # Step 1: Checkout repository
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Step 2: Configure Git
       - name: Configure Git
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "GitHub Actions Bot"
 
-      # Step 3: Setup Node.js with caching
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: package-lock.json   # root of repo
 
-      # Step 4: Install Node.js dependencies
+      - name: Cache Node.js dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: node-modules-
+
       - name: Install Node.js dependencies
         run: npm install --no-audit --no-fund --legacy-peer-deps
 
-      # Step 5: Run grabbers
       - name: Grab DishTV EPG
         run: |
-          TZ=Asia/Kolkata npm run grab -- --channels=sites/dishtv.in/dishtv.xml --maxConnections=10 --days=3 --gzip
           mkdir -p epg
+          npm run grab -- --channels=sites/dishtv.in/dishtv.xml --maxConnections=10 --days=2 --gzip
           cp guide.xml epg/dishtv.xml
           cp guide.xml.gz epg/dishtv.xml.gz
-          cd ..
-          export TZ=Asia/Kolkata
           python3 scripts/dishtv_epg.py
+
+      - name: Upload DishTV EPG
+        uses: actions/upload-artifact@v4
+        with:
+          name: epg-dishtv
+          path: epg/
+
+  grabber-tataplay:
+    name: Grab TataPlay EPG
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions Bot"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Cache Node.js dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: node-modules-
+
+      - name: Install Node.js dependencies
+        run: npm install --no-audit --no-fund --legacy-peer-deps
 
       - name: Grab TataPlay EPG
         run: |
-          TZ=Asia/Kolkata npm run grab -- --channels=sites/tataplay.com/tataplay.xml --maxConnections=10 --days=3 --gzip
           mkdir -p epg
+          npm run grab -- --channels=sites/tataplay.com/tataplay.xml --maxConnections=10 --days=2 --gzip
           cp guide.xml epg/tataplay.xml
           cp guide.xml.gz epg/tataplay.xml.gz
 
-      - name: Grab DistroTV EPG
-        run: |
-          TZ=Asia/Kolkata npm run grab -- --channels=sites/distro.tv/distrotv.xml --maxConnections=10 --days=3 --gzip
-          mkdir -p epg
-          cp guide.xml epg/distrotv.xml
-          cp guide.xml.gz epg/distrotv.xml.gz
-          cd ..
-          export TZ=Asia/Kolkata
-          python3 scripts/distrotv_epg.py
-
-      # Step 6: Save epg/ folder
-      - name: Upload EPG folder
+      - name: Upload TataPlay EPG
         uses: actions/upload-artifact@v4
         with:
-          name: epg-files
+          name: epg-tataplay
           path: epg/
 
-      # Step 7: Get current IST date
+  grabber-distrotv:
+    name: Grab DistroTV EPG
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions Bot"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Cache Node.js dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: node-modules-
+
+      - name: Install Node.js dependencies
+        run: npm install --no-audit --no-fund --legacy-peer-deps
+
+      - name: Grab DistroTV EPG
+        run: |
+          mkdir -p epg
+          npm run grab -- --channels=sites/distro.tv/distrotv.xml --maxConnections=10 --days=2 --gzip
+          cp guide.xml epg/distrotv.xml
+          cp guide.xml.gz epg/distrotv.xml.gz
+          python3 scripts/distrotv_epg.py
+
+      - name: Upload DistroTV EPG
+        uses: actions/upload-artifact@v4
+        with:
+          name: epg-distrotv
+          path: epg/
+
+# -------------------------------
+# Combine artifacts into single artifact
+# -------------------------------
+  combine-epg:
+    name: Combine EPG Artifacts
+    runs-on: ubuntu-latest
+    needs:
+      - grabber-dishtv
+      - grabber-tataplay
+      - grabber-distrotv
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download DishTV EPG
+        uses: actions/download-artifact@v4
+        with:
+          name: epg-dishtv
+          path: epg/
+
+      - name: Download TataPlay EPG
+        uses: actions/download-artifact@v4
+        with:
+          name: epg-tataplay
+          path: epg/
+
+      - name: Download DistroTV EPG
+        uses: actions/download-artifact@v4
+        with:
+          name: epg-distrotv
+          path: epg/
+
+      - name: Compress all EPGs into single artifact
+        run: tar -czf epg-all.tar.gz epg/
+
+      - name: Upload combined EPG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: epg-all
+          path: epg-all.tar.gz
+
+# -------------------------------
+# Downloader Job
+# -------------------------------
+  downloader:
+    name: EPG Downloader
+    runs-on: ubuntu-latest
+    needs: combine-epg
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions Bot"
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: python-deps-${{ hashFiles('requirements.txt') || 'default' }}
+          restore-keys: python-deps-
+
+      - name: Install Python dependencies
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install requests
+          fi
+
+      - name: Download combined EPG artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: epg-all
+          path: epg/
+
+      - name: Extract EPG folder
+        run: tar -xzf epg/epg-all.tar.gz -C epg/
+
+      - name: Run EPG Downloader Script
+        run: python scripts/epg-downloader.py
+
+      - name: Cleanup old EPG files
+        run: |
+          # Keep only last 7 days of EPG XML files
+          find epg/ -type f -name "*.xml.gz" -mtime +7 -exec rm -f {} \;
+          # Remove old tar.gz files except the latest combined artifact
+          find epg/ -type f -name "*.tar.gz" -not -name "epg-all.tar.gz" -exec rm -f {} \;
+
       - name: Get current date in IST
         id: get_date
-        env:
-          TZ: Asia/Kolkata
         run: echo "current_date=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
 
-      # Step 8: Commit & push updates
       - name: Commit & push updated EPG files
         run: |
           git pull --rebase origin main || true
-          git add epg/*.xml.gz || true
-          git commit -m "EPG updated at ${{ env.current_date }} (IST)" || echo "No changes to commit"
-          git push
+          git add epg/ || true
+          git diff --cached --quiet || git commit -m "EPG updated and cleaned at ${{ env.current_date }} (IST)"
+          git push || echo "No changes to push"
