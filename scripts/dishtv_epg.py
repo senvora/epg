@@ -3,128 +3,131 @@ from xml.dom import minidom
 import gzip
 from datetime import datetime, timedelta, timezone
 
-# -----------------------------
-# Configuration
-# -----------------------------
-input_file = "epg/dishtv.xml"   # raw grabbed XML
-gzip_file = "epg/dishtv.xml.gz" # final gzipped XML
+input_file = "epg/dishtv.xml"
+gzip_file = "epg/dishtv.xml.gz"
 
-# IST timezone
 IST = timezone(timedelta(hours=5, minutes=30))
 
-# -----------------------------
-# Helpers
-# -----------------------------
+# --- Helper: relabel as +0530 (IST) ---
 def relabel_as_ist(dt_str):
-    """Convert YYYYMMDDHHMMSS to YYYYMMDDHHMMSS +0530"""
     try:
         dt = datetime.strptime(dt_str[:14], "%Y%m%d%H%M%S")
         return dt.strftime("%Y%m%d%H%M%S +0530")
     except ValueError:
         return dt_str
 
+# --- Helper: parse string to datetime in IST ---
 def parse_dt_ist(dt_str):
-    """Parse YYYYMMDDHHMMSS to datetime in IST"""
     try:
         dt = datetime.strptime(dt_str[:14], "%Y%m%d%H%M%S")
         return dt.replace(tzinfo=IST)
     except ValueError:
         return None
 
-# -----------------------------
-# Date range: today + tomorrow IST
-# -----------------------------
+# --- Get IST today and tomorrow range ---
 now = datetime.now(IST)
 today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 tomorrow_end = (today_start + timedelta(days=2)) - timedelta(seconds=1)
 
-# -----------------------------
-# Parse XML
-# -----------------------------
+# --- Parse XML ---
 tree = ET.parse(input_file)
 root = tree.getroot()
 
-# Relabel <tv> date attribute
+# Convert <tv> date (relabel only)
 if "date" in root.attrib:
     root.set("date", relabel_as_ist(root.attrib["date"]))
 
-# -----------------------------
-# Filter programmes
-# -----------------------------
+# --- Collect and clean programmes ---
 programmes = []
-for prog in root.findall("programme"):
-    # Relabel start/stop
+for programme in root.findall("programme"):
+    # Relabel start/stop attributes to +0530
     for attr in ("start", "stop"):
-        if attr in prog.attrib:
-            prog.set(attr, relabel_as_ist(prog.attrib[attr]))
+        if attr in programme.attrib:
+            programme.set(attr, relabel_as_ist(programme.attrib[attr]))
 
-    # Parse times
-    start_dt = parse_dt_ist(prog.attrib.get("start", ""))
-    stop_dt = parse_dt_ist(prog.attrib.get("stop", ""))
+    # Convert start/stop to datetime for filtering
+    start_dt = parse_dt_ist(programme.attrib.get("start", ""))
+    stop_dt = parse_dt_ist(programme.attrib.get("stop", ""))
 
+    # Skip programme if no valid time
     if not start_dt or not stop_dt:
         continue
 
-    # Keep only today + tomorrow
+    # Keep only if overlaps today/tomorrow
     if stop_dt < today_start or start_dt > tomorrow_end:
         continue
 
     # Keep only English titles
-    titles = prog.findall("title")
-    for t in titles:
-        if t.attrib.get("lang") != "en":
-            prog.remove(t)
+    titles = programme.findall("title")
+    if len(titles) > 1:
+        for t in titles:
+            if t.attrib.get("lang") != "en":
+                programme.remove(t)
 
     # Keep only English descriptions
-    descs = prog.findall("desc")
-    for d in descs:
-        if d.attrib.get("lang") != "en":
-            prog.remove(d)
+    descs = programme.findall("desc")
+    if len(descs) > 1:
+        for d in descs:
+            if d.attrib.get("lang") != "en":
+                programme.remove(d)
 
-    # Remove other tags except title/desc
-    for child in list(prog):
+    # Remove other tags (like <icon>, <url>)
+    for child in list(programme):
         if child.tag not in ("title", "desc"):
-            prog.remove(child)
+            programme.remove(child)
 
     # Remove empty title/desc
     for tag in ("title", "desc"):
-        el = prog.find(tag)
-        if el is not None and (el.text is None or el.text.strip() == ""):
-            prog.remove(el)
+        element = programme.find(tag)
+        if element is not None and (element.text is None or element.text.strip() == ""):
+            programme.remove(element)
 
-    programmes.append(prog)
+    programmes.append(programme)
 
-# -----------------------------
-# Collect and sort channels
-# -----------------------------
+# --- Collect channels ---
 channels = root.findall("channel")
+
+# --- Remove existing channels and programmes ---
 for elem in channels + root.findall("programme"):
     root.remove(elem)
 
-# Sort channels alphabetically
-channels.sort(key=lambda c: (c.find("display-name").text.lower() if c.find("display-name") is not None else c.attrib.get("id", "").lower()))
+# --- Sort channels alphabetically ---
+def channel_key(c):
+    name_elem = c.find("display-name")
+    if name_elem is not None and name_elem.text:
+        return name_elem.text.lower()
+    return c.attrib.get("id", "").lower()
 
-# Attach sorted channels
+channels.sort(key=channel_key)
+
+# --- Re-attach sorted channels ---
 for c in channels:
     root.append(c)
 
-# Sort programmes by channel then start
-programmes.sort(key=lambda p: (p.attrib.get("channel", "").lower(), p.attrib.get("start", "")))
+# --- Sort programmes by channel then start ---
+def sort_key(p):
+    channel = p.attrib.get("channel", "").lower()
+    start = p.attrib.get("start", "")
+    return (channel, start)
+
+programmes.sort(key=sort_key)
+
+# --- Re-attach sorted programmes ---
 for p in programmes:
     root.append(p)
 
-# -----------------------------
-# Pretty print XML
-# -----------------------------
+# --- Pretty print XML with indentation ---
 xml_str = ET.tostring(root, encoding="utf-8")
-pretty_xml = minidom.parseString(xml_str).toprettyxml(indent="  ", encoding="utf-8")
-# Remove blank lines
-pretty_xml = b"\n".join(line for line in pretty_xml.splitlines() if line.strip())
+parsed = minidom.parseString(xml_str)
+pretty_xml_as_str = parsed.toprettyxml(indent="  ", encoding="utf-8")
 
-# -----------------------------
-# Save gzipped XML only
-# -----------------------------
-with gzip.open(gzip_file, "wb") as f:
-    f.write(pretty_xml)
+# Remove blank lines
+pretty_xml_as_str = b"\n".join(
+    line for line in pretty_xml_as_str.splitlines() if line.strip()
+)
+
+# --- Save ONLY gzipped version ---
+with gzip.open(gzip_file, "wb") as f_out:
+    f_out.write(pretty_xml_as_str)
 
 print(f"✅ Cleaned, filtered (today + tomorrow IST) & gzipped EPG saved to {gzip_file}")
