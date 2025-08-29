@@ -44,6 +44,9 @@ jobs:
           mkdir -p epg
           cp guide.xml epg/dishtv.xml
           cp guide.xml.gz epg/dishtv.xml.gz
+          cd ..
+          export TZ=Asia/Kolkata
+          python3 scripts/dishtv_epg.py
 
       - name: Grab TataPlay EPG
         run: |
@@ -58,6 +61,9 @@ jobs:
           mkdir -p epg
           cp guide.xml epg/distrotv.xml
           cp guide.xml.gz epg/distrotv.xml.gz
+          cd ..
+          export TZ=Asia/Kolkata
+          python3 scripts/distrotv_epg.py
 
       # Step 6: Save epg/ folder
       - name: Upload EPG folder
