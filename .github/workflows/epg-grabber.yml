@@ -17,7 +17,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # ensure full history for rebase
+          fetch-depth: 0
 
       # Step 2: Configure Git
       - name: Configure Git
@@ -25,17 +25,19 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "GitHub Actions Bot"
 
-      # Step 3: Setup Node.js
+      # Step 3: Setup Node.js with caching
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: epg/package-lock.json
+          cache-dependency-path: package-lock.json   # root of repo
 
-      # Step 4: Install Node.js dependencies
+      # Step 4: Install Node.js dependencies in epg-org
       - name: Install Node.js dependencies
-        run: cd epg-org && npm install --no-audit --no-fund --legacy-peer-deps
+        run: |
+          cd epg-org
+          npm install --no-audit --no-fund --legacy-peer-deps
 
       # Step 5: Run grabbers
       - name: Grab DishTV EPG
