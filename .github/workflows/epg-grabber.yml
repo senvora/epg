@@ -42,7 +42,8 @@ jobs:
           npm run grab -- --channels=sites/dishtv.in/dishtv.xml --maxConnections=10 --days=2 --gzip
           python3 scripts/dishtv_epg.py
           mkdir -p epg/dishtv
-          mv guide.xml.gz epg/dishtv/dishtv.xml.gz
+          cp guide.xml ../epg/dishtv.xml
+          cp guide.xml.gz ../epg/dishtv.xml.gz
 
       - name: Upload DishTV EPG
         uses: actions/upload-artifact@v4
@@ -80,7 +81,8 @@ jobs:
           npm run grab -- --channels=sites/tataplay.com/tataplay.xml --maxConnections=10 --days=2 --gzip
           python3 scripts/tataplay_epg.py
           mkdir -p epg/tataplay
-          mv guide.xml.gz epg/tataplay/tataplay.xml.gz
+          cp guide.xml ../epg/tataplay.xml
+          cp guide.xml.gz ../epg/tataplay.xml.gz
 
       - name: Upload TataPlay EPG
         uses: actions/upload-artifact@v4
@@ -118,7 +120,8 @@ jobs:
           npm run grab -- --channels=sites/distro.tv/distrotv.xml --maxConnections=10 --days=2 --gzip
           python3 scripts/distrotv_epg.py
           mkdir -p epg/distrotv
-          mv guide.xml.gz epg/distrotv/distrotv.xml.gz
+          cp guide.xml ../epg/distrotv.xml
+          cp guide.xml.gz ../distrotv.xml.gz
 
       - name: Upload DistroTV EPG
         uses: actions/upload-artifact@v4
