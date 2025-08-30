@@ -7,6 +7,8 @@ jobs:
   grabber:
     name: Test Grabber
     runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Kolkata   # ✅ All steps run in IST
 
     steps:
       # Step 1: Checkout repository
@@ -35,38 +37,29 @@ jobs:
       - name: Grab DistroTV EPG
         run: |
           mkdir -p epg
-          TZ=Asia/Kolkata npm run grab -- --channels=sites/distro.tv/distrotv.xml --days=1 --output=epg/distrotv.xml
+          npm run grab -- --channels=sites/distro.tv/distrotv.xml --days=1 --output=epg/distrotv.xml
 
-      # Step 6: Clean + convert to gzip with Python
+      # Step 6: Clean + compress with Python (removes distrotv.xml after gzip)
       - name: Clean & compress XML
         run: |
-          TZ=Asia/Kolkata python3 scripts/personal/distrotv_epg.py
+          python3 scripts/personal/distrotv_epg.py
+          rm -f epg/distrotv.xml   # ✅ Remove XML, keep only .gz
 
-      # Step 7: Debug check for generated files
-      - name: Check generated files
-        run: |
-          ls -lh epg
-          file epg/*
-          gunzip -t epg/*.gz
+      # Step 7: Print IST date/time (verification)
+      - name: Print IST time
+        run: date +"%Y-%m-%d %H:%M:%S %Z"
 
-      # Step 8: Save epg/ folder as artifact
+      # Step 8: Upload epg/ folder as artifact (optional)
       - name: Upload EPG folder
         uses: actions/upload-artifact@v4
         with:
           name: epg-files
           path: epg/
 
-      # Step 9: Get current IST date
-      - name: Get current date in IST
-        id: get_date
-        env:
-          TZ: Asia/Kolkata
-        run: echo "current_date=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
-
-      # Step 10: Commit & push updated EPG files
+      # Step 9: Commit & push updated EPG files
       - name: Commit & push updated EPG files
         run: |
-          git add epg/distrotv.xml epg/distrotv.xml.gz || true
-          git commit -m "EPG updated at ${{ env.current_date }} (IST)" || echo "No changes to commit"
+          git add epg/distrotv.xml.gz || true
+          git commit -m "EPG updated at $(date +'%Y-%m-%d %H:%M:%S') IST" || echo "No changes to commit"
           git pull --rebase origin main || true
           git push
