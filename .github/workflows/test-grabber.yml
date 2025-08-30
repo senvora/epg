@@ -1,0 +1,59 @@
+name: Test Grabber
+
+on:
+  workflow_dispatch:
+
+jobs:
+  grabber:
+    name: Test Grabber
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Git identity
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions Bot"
+
+      # Step 3: Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      # Step 4: Install Node.js dependencies
+      - name: Install Node.js dependencies
+        run: npm install --no-audit --no-fund --legacy-peer-deps
+
+      # Step 5: Run grabber
+      - name: Grab DistroTV EPG
+        run: |
+          TZ=Asia/Kolkata npm run grab -- --channels=sites/distro.tv/distrotv.xml --days=2 --gzip --output=epg/distro.xml
+          TZ=Asia/Kolkata python3 scripts/personal/dishtv_epg.py
+
+      # Step 6: Save epg/ folder for the next job
+      - name: Upload EPG folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: epg-files
+          path: epg/
+          
+      # Step 7: Get current IST date
+      - name: Get current date in IST
+        id: get_date
+        env:
+          TZ: Asia/Kolkata
+        run: echo "current_date=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+
+      # Step 8: Commit & push updated EPG files
+      - name: Commit & push updated EPG files
+        run: |
+          git add epg/*.xml.gz || true
+          git commit -m "EPG updated at ${{ env.current_date }} (IST)" || echo "No changes to commit"
+          git pull --rebase origin main || true
+          git push
