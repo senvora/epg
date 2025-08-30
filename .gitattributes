@@ -1,3 +1,12 @@
-# Enforce the usage of CRLF in GitHub Actions per ESLint configuration.
+# Default: enforce CRLF for text files (per ESLint config)
 * text eol=crlf
-.husky/** -text
+
+# Do NOT change line endings for EPG gzip outputs
+epg/*.gz binary
+
+# Also mark other common binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.zip binary
+*.exe binary
