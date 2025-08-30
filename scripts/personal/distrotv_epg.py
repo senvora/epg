@@ -9,6 +9,7 @@ UTC = timezone.utc
 
 # Input/Output
 input_file = "epg/distrotv.xml"
+clean_xml_file = "epg/distrotv.xml"
 gzip_file = "epg/distrotv.xml.gz"
 
 
@@ -60,68 +61,47 @@ for programme in root.findall("programme"):
                 stop_dt = to_ist_dt(programme.attrib[attr])
             programme.set(attr, to_ist_str(programme.attrib[attr]))
 
-    # Skip if no valid times
     if not start_dt or not stop_dt:
         continue
 
-    # --- Keep only if overlaps with today/tomorrow ---
     if stop_dt < today_start or start_dt > tomorrow_end:
         continue
 
-    # Keep only English <title>
-    titles = programme.findall("title")
-    if len(titles) > 1:
-        for t in titles:
-            if t.attrib.get("lang") != "en":
-                programme.remove(t)
+    # Keep only English <title> and <desc>
+    for tag in ("title", "desc"):
+        elements = programme.findall(tag)
+        if len(elements) > 1:
+            for el in elements:
+                if el.attrib.get("lang") != "en":
+                    programme.remove(el)
 
-    # Keep only English <desc>
-    descs = programme.findall("desc")
-    if len(descs) > 1:
-        for d in descs:
-            if d.attrib.get("lang") != "en":
-                programme.remove(d)
-
-    # Remove unwanted tags (keep only title + desc)
+    # Remove unwanted tags
     for child in list(programme):
         if child.tag not in ("title", "desc"):
             programme.remove(child)
 
-    # Remove empty title/desc
+    # Remove empty
     for tag in ("title", "desc"):
-        element = programme.find(tag)
-        if element is not None and (element.text is None or element.text.strip() == ""):
-            programme.remove(element)
+        el = programme.find(tag)
+        if el is not None and (el.text is None or el.text.strip() == ""):
+            programme.remove(el)
 
     programmes.append(programme)
 
 # --- Collect channels ---
 channels = root.findall("channel")
 
-# Remove old channels + programmes
+# Remove all old ones
 for elem in channels + root.findall("programme"):
     root.remove(elem)
 
 # Sort channels alphabetically
-def channel_key(c):
-    name_elem = c.find("display-name")
-    if name_elem is not None and name_elem.text:
-        return name_elem.text.lower()
-    return c.attrib.get("id", "").lower()
-
-channels.sort(key=channel_key)
-
+channels.sort(key=lambda c: (c.find("display-name").text or "").lower())
 for c in channels:
     root.append(c)
 
-# Sort programmes (by channel + start)
-def programme_key(p):
-    channel = p.attrib.get("channel", "").lower()
-    start = p.attrib.get("start", "")
-    return (channel, start)
-
-programmes.sort(key=programme_key)
-
+# Sort programmes by channel + start
+programmes.sort(key=lambda p: (p.attrib.get("channel", "").lower(), p.attrib.get("start", "")))
 for p in programmes:
     root.append(p)
 
@@ -135,8 +115,12 @@ pretty_xml_as_str = b"\n".join(
     line for line in pretty_xml_as_str.splitlines() if line.strip()
 )
 
-# Save only gzipped XML
+# Save cleaned XML
+with open(clean_xml_file, "wb") as f_out:
+    f_out.write(pretty_xml_as_str)
+
+# Save gzipped XML
 with gzip.open(gzip_file, "wb") as f_out:
     f_out.write(pretty_xml_as_str)
 
-print(f"✅ Cleaned + 2-day EPG saved to {gzip_file}")
+print(f"✅ Cleaned EPG saved as {clean_xml_file} and {gzip_file}")
