@@ -30,27 +30,34 @@ jobs:
       - name: Install Node.js dependencies
         run: npm install --no-audit --no-fund --legacy-peer-deps
 
-      # Step 5: Run grabber
+      # Step 5: Run grabber (produces XML + GZ directly)
       - name: Grab DistroTV EPG
         run: |
           TZ=Asia/Kolkata npm run grab -- --channels=sites/distro.tv/distrotv.xml --days=2 --gzip --output=epg/distrotv.xml
           TZ=Asia/Kolkata python3 scripts/personal/distrotv_epg.py
 
-      # Step 6: Save epg/ folder for the next job
+      # Step 6: Debug check for gz validity
+      - name: Check generated files
+        run: |
+          ls -lh epg
+          file epg/*.gz
+          gunzip -t epg/*.gz
+
+      # Step 7: Save epg/ folder as artifact
       - name: Upload EPG folder
         uses: actions/upload-artifact@v4
         with:
           name: epg-files
           path: epg/
           
-      # Step 7: Get current IST date
+      # Step 8: Get current IST date
       - name: Get current date in IST
         id: get_date
         env:
           TZ: Asia/Kolkata
         run: echo "current_date=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
 
-      # Step 8: Commit & push updated EPG files
+      # Step 9: Commit & push updated EPG files
       - name: Commit & push updated EPG files
         run: |
           git add epg/*.xml.gz || true
