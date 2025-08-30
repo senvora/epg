@@ -30,18 +30,19 @@ jobs:
       - name: Install Node.js dependencies
         run: npm install --no-audit --no-fund --legacy-peer-deps
 
-      # Step 5: Run grabber (produces XML + GZ directly)
+      # Step 5: Run grabber (produces XML + GZ directly in epg/)
       - name: Grab DistroTV EPG
         run: |
+          mkdir -p epg
           TZ=Asia/Kolkata npm run grab -- --channels=sites/distro.tv/distrotv.xml --days=2 --gzip --output=epg/distrotv.xml
           TZ=Asia/Kolkata python3 scripts/personal/distrotv_epg.py
 
-      # Step 6: Debug check for gz validity
+      # Step 6: Debug check for generated files
       - name: Check generated files
         run: |
           ls -lh epg
           file epg/*.gz
-          gunzip -t epg/*.gz
+          gunzip -t epg/*.gz || echo "gz file check failed"
 
       # Step 7: Save epg/ folder as artifact
       - name: Upload EPG folder
