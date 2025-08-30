@@ -1,13 +1,11 @@
-name: EPG Grabber
+name: Test Grabber
 
 on:
-  schedule:
-    - cron: '0 22 * * *' # 22:00 UTC / 03:30 IST
   workflow_dispatch:
 
 jobs:
   grabber:
-    name: EPG Grabber
+    name: Test Grabber
     runs-on: ubuntu-latest
 
     steps:
@@ -15,7 +13,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Configure Git identity
+      # Step 2: Set up Git identity
       - name: Configure Git
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -33,25 +31,25 @@ jobs:
       - name: Install Node.js dependencies
         run: npm install --no-audit --no-fund --legacy-peer-deps
 
-      # Step 5: Run grabber (raw XML)
+      # Step 5: Run grabber → produces raw distrotv.xml
       - name: Grab DistroTV EPG
         run: |
           mkdir -p epg
           TZ=Asia/Kolkata npm run grab -- --channels=sites/distro.tv/distrotv.xml --days=1 --output=epg/distrotv.xml
 
-      # Step 6: Clean & generate XML + GZ
-      - name: Clean and compress EPG
+      # Step 6: Clean + convert to gzip with Python
+      - name: Clean & compress XML
         run: |
           TZ=Asia/Kolkata python3 scripts/personal/distrotv_epg.py
 
-      # Step 7: Debug check
+      # Step 7: Debug check for generated files
       - name: Check generated files
         run: |
           ls -lh epg
           file epg/*
-          gunzip -t epg/*.gz || echo "gz file check failed"
+          gunzip -t epg/*.gz
 
-      # Step 8: Save epg/ folder as artifact (optional for debugging)
+      # Step 8: Save epg/ folder as artifact
       - name: Upload EPG folder
         uses: actions/upload-artifact@v4
         with:
@@ -68,7 +66,7 @@ jobs:
       # Step 10: Commit & push updated EPG files
       - name: Commit & push updated EPG files
         run: |
-          git add epg/*.xml epg/*.xml.gz || true
-          git commit -m "DistroTV EPG updated at ${{ env.current_date }} (IST)" || echo "No changes to commit"
+          git add epg/distrotv.xml epg/distrotv.xml.gz || true
+          git commit -m "EPG updated at ${{ env.current_date }} (IST)" || echo "No changes to commit"
           git pull --rebase origin main || true
           git push
