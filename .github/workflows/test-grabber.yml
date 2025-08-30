@@ -34,7 +34,7 @@ jobs:
       - name: Grab DistroTV EPG
         run: |
           TZ=Asia/Kolkata npm run grab -- --channels=sites/distro.tv/distrotv.xml --days=2 --gzip --output=epg/distro.xml
-          TZ=Asia/Kolkata python3 scripts/personal/dishtv_epg.py
+          TZ=Asia/Kolkata python3 scripts/personal/distrotv_epg.py
 
       # Step 6: Save epg/ folder for the next job
       - name: Upload EPG folder
